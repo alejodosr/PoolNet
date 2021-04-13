@@ -25,6 +25,9 @@ def get_test_info(sal_mode='e'):
     elif sal_mode == 'm_r': # for speed test
         image_root = './data/MSRA/Imgs_resized/'
         image_source = './data/MSRA/test_resized.lst'
+    elif sal_mode == 'c':
+        image_root = './data/50AI/Imgs/'
+        image_source = './data/50AI/test.lst'
 
     return image_root, image_source
 

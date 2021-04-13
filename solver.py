@@ -69,10 +69,21 @@ class Solver(object):
                 images = Variable(images)
                 if self.config.cuda:
                     images = images.cuda()
+                # Workaround
+                print(images.shape)
+                images = torch.nn.functional.interpolate(images, size=512)
+                print(images.shape)
+                images = images.permute(0, 1, 3, 2)
+                images = torch.nn.functional.interpolate(images, size=512)
+                images = images.permute(0, 1, 3, 2)
                 preds = self.net(images)
                 pred = np.squeeze(torch.sigmoid(preds).cpu().data.numpy())
                 multi_fuse = 255 * pred
                 cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '.png'), multi_fuse)
+                masks = torch.nn.functional.interpolate(preds.squeeze(0).sigmoid().permute(1, 2, 0), 3)
+                results = np.concatenate(((masks * 255).cpu().numpy(), images.squeeze(0).permute(1, 2, 0).cpu().numpy()), axis=0)
+                cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '_img.png'),
+                            results)
         time_e = time.time()
         print('Speed: %f FPS' % (img_num/(time_e-time_s)))
         print('Test Done!')
