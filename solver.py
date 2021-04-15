@@ -73,9 +73,9 @@ class Solver(object):
                 imgs.append(img[:, :, y1:y2, x1:x2])
                 positions.append([x1, y1, x2, y2])
 
+        # TODO: Print bboxes to check if are well read
+
         return imgs, positions
-
-
 
     def test(self):
         mode_name = 'sal_fuse'
@@ -84,39 +84,38 @@ class Solver(object):
         for i, data_batch in enumerate(self.test_loader):
             images, name, im_size = data_batch['image'], data_batch['name'][0], np.asarray(data_batch['size'])
             # Get annotation file
-            # annotation_file = self.config.test_root.replace('images/', 'annotations/annotations_test.csv')
-            #
-            # subimages, positions = self.get_sub_imgs_from_bboxes(images, name, annotation_file)
-            # subimages = [images]
-            # print(images.shape)
-            # print(annotation_file)
-            # print(self.config.test_root)
-            # print(len(subimages))
-            # print(subimages[0].shape)
-            # for img in subimages:
-            img = images
-            with torch.no_grad():
-                img = Variable(img)
-                if self.config.cuda:
-                    img = img.cuda()
-                # Workaround
-                print(img.shape)
-                img = torch.nn.functional.interpolate(img, size=512)
-                print(img.shape)
-                img = img.permute(0, 1, 3, 2)
-                img = torch.nn.functional.interpolate(img, size=512)
-                img = img.permute(0, 1, 3, 2)
+            annotation_file = self.config.test_root.replace('images/', 'annotations/annotations_test.csv')
 
-                preds = self.net(img)
-                pred = np.squeeze(torch.sigmoid(preds).cpu().data.numpy())
-                multi_fuse = 255 * pred
-                # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '.png'), multi_fuse)
-                masks = torch.nn.functional.interpolate(preds.squeeze(0).sigmoid().permute(1, 2, 0), 3)
-                results = np.concatenate(((masks * 255).cpu().numpy(), img.squeeze(0).permute(1, 2, 0).cpu().numpy()), axis=0)
-                # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '_img.png'),
-                #             results)
-                cv2.imshow("img", img.squeeze(0).permute(1, 2, 0).cpu().numpy())
-                cv2.waitKey(0)
+            subimages, positions = self.get_sub_imgs_from_bboxes(images, name, annotation_file)
+            print(images.shape)
+            print(annotation_file)
+            print(self.config.test_root)
+            print(len(subimages))
+            print(subimages[0].shape)
+            for idx, img in enumerate(subimages):
+                with torch.no_grad():
+                    img = Variable(img)
+                    if self.config.cuda:
+                        img = img.cuda()
+                    # Workaround
+                    print(img.shape)
+                    img = torch.nn.functional.interpolate(img, size=512)
+                    print(img.shape)
+                    img = img.permute(0, 1, 3, 2)
+                    img = torch.nn.functional.interpolate(img, size=512)
+                    img = img.permute(0, 1, 3, 2)
+
+                    preds = self.net(img)
+                    pred = np.squeeze(torch.sigmoid(preds).cpu().data.numpy())
+                    multi_fuse = 255 * pred
+                    # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '.png'), multi_fuse)
+                    masks = torch.nn.functional.interpolate(preds.squeeze(0).sigmoid().permute(1, 2, 0), 3)
+                    results = np.concatenate(((masks * 255).cpu().numpy(), img.squeeze(0).permute(1, 2, 0).cpu().numpy()), axis=0)
+                    cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '_' + str(idx) + '_img.png'),
+                                results)
+                    print(img.squeeze(0).permute(1, 2, 0).cpu().numpy().shape)
+                    # cv2.imshow("img", img.squeeze(0).permute(1, 2, 0).cpu().numpy().astype(np.uint8))
+                    # cv2.waitKey(0)
 
         time_e = time.time()
         print('Speed: %f FPS' % (img_num/(time_e-time_s)))
