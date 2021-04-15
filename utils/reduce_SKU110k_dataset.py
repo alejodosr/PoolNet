@@ -20,14 +20,7 @@ for subdir, dirs, files in os.walk(INPUT_DATASET):
 print("INFO: Number of test images " + str(number_test))
 
 os.system('touch ' + '"' + os.path.join(OUTPUT_DATASET, 'annotations/annotations_test.csv') + '"')
-<<<<<<< HEAD
-<<<<<<< HEAD
 os.system('touch ' + '"' + os.path.join(OUTPUT_DATASET, 'annotations/images.lst') + '"')
-
-=======
->>>>>>> 034bc38ebd09ddd6f4aa5ad48516569e3479de39
-=======
->>>>>>> 034bc38ebd09ddd6f4aa5ad48516569e3479de39
 
 with open(os.path.join(OUTPUT_DATASET, 'annotations/annotations_test.csv'), 'a') as out_file:
     for idx in range(SAMPLES_NO):
@@ -35,16 +28,11 @@ with open(os.path.join(OUTPUT_DATASET, 'annotations/annotations_test.csv'), 'a')
         print("INFO: image " + str(img_no))
         csv_file = open(os.path.join(INPUT_DATASET, 'annotations/annotations_test.csv'))
         csv_reader = csv.reader(csv_file, delimiter=',')
-<<<<<<< HEAD
-<<<<<<< HEAD
+
         # Compatibility with PoolNet
         with open(os.path.join(OUTPUT_DATASET, 'annotations/images.lst'), 'a') as out_file2:
             out_file2.write('test_' + str(img_no) + '.jpg' + '\n')
 
-=======
->>>>>>> 034bc38ebd09ddd6f4aa5ad48516569e3479de39
-=======
->>>>>>> 034bc38ebd09ddd6f4aa5ad48516569e3479de39
         for row in csv_reader:
             if row[0] == 'test_' + str(img_no) + '.jpg':
                 # Write annotation
