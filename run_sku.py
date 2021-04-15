@@ -17,8 +17,8 @@ def get_test_info(sal_mode='e'):
         image_root = './data/HKU-IS/Imgs/'
         image_source = './data/HKU-IS/test.lst'
     elif sal_mode == 's':
-        image_root = '/home/alejandro/temp/dataset_test/SOD/Imgs/'
-        image_source = '/home/alejandro/temp/dataset_test/SOD/test.lst'
+        image_root = './data/SOD/Imgs/'
+        image_source = './data/SOD/test.lst'
     elif sal_mode == 't':
         image_root = './data/DUTS-TE/Imgs/'
         image_source = './data/DUTS-TE/test.lst'
@@ -28,6 +28,15 @@ def get_test_info(sal_mode='e'):
     elif sal_mode == 'c':
         image_root = './data/50AI/Imgs/'
         image_source = './data/50AI/test.lst'
+<<<<<<< HEAD
+<<<<<<< HEAD
+    elif sal_mode == 'k':
+        image_root = '/media/alejandro/DATA_SSD/temporary/SKU110K_fixed_100/images/'
+        image_source = '/media/alejandro/DATA_SSD/temporary/SKU110K_fixed_100/annotations/images.lst'
+=======
+>>>>>>> 034bc38ebd09ddd6f4aa5ad48516569e3479de39
+=======
+>>>>>>> 034bc38ebd09ddd6f4aa5ad48516569e3479de39
 
     return image_root, image_source
 
@@ -83,7 +92,15 @@ if __name__ == '__main__':
     # Testing settings
     parser.add_argument('--model', type=str, default=None) # Snapshot
     parser.add_argument('--test_fold', type=str, default=None) # Test results saving folder
+<<<<<<< HEAD
+<<<<<<< HEAD
+    parser.add_argument('--sal_mode', type=str, default='s') # Test image dataset
+=======
     parser.add_argument('--sal_mode', type=str, default='e') # Test image dataset
+>>>>>>> 034bc38ebd09ddd6f4aa5ad48516569e3479de39
+=======
+    parser.add_argument('--sal_mode', type=str, default='e') # Test image dataset
+>>>>>>> 034bc38ebd09ddd6f4aa5ad48516569e3479de39
 
     # Misc
     parser.add_argument('--mode', type=str, default='train', choices=['train', 'test'])

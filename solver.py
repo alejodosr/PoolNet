@@ -12,7 +12,7 @@ import torchvision.utils as vutils
 import cv2
 import math
 import time
-
+import csv
 
 class Solver(object):
     def __init__(self, train_loader, test_loader, config):
@@ -59,31 +59,65 @@ class Solver(object):
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.net.parameters()), lr=self.lr, weight_decay=self.wd)
         self.print_network(self.net, 'PoolNet Structure')
 
+    def get_sub_imgs_from_bboxes(self, img, img_name, annotation_path):
+        csv_file = open(annotation_path)
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        imgs = []
+        positions = []
+        for row in csv_reader:
+            if row[0] == img_name:
+                x1 = int(row[1])
+                y1 = int(row[2])
+                x2 = int(row[3])
+                y2 = int(row[4])
+                imgs.append(img[:, :, y1:y2, x1:x2])
+                positions.append([x1, y1, x2, y2])
+
+        return imgs, positions
+
+
+
     def test(self):
         mode_name = 'sal_fuse'
         time_s = time.time()
         img_num = len(self.test_loader)
         for i, data_batch in enumerate(self.test_loader):
             images, name, im_size = data_batch['image'], data_batch['name'][0], np.asarray(data_batch['size'])
+            # Get annotation file
+            # annotation_file = self.config.test_root.replace('images/', 'annotations/annotations_test.csv')
+            #
+            # subimages, positions = self.get_sub_imgs_from_bboxes(images, name, annotation_file)
+            # subimages = [images]
+            # print(images.shape)
+            # print(annotation_file)
+            # print(self.config.test_root)
+            # print(len(subimages))
+            # print(subimages[0].shape)
+            # for img in subimages:
+            img = images
             with torch.no_grad():
-                images = Variable(images)
+                img = Variable(img)
                 if self.config.cuda:
-                    images = images.cuda()
+                    img = img.cuda()
                 # Workaround
-                print(images.shape)
-                images = torch.nn.functional.interpolate(images, size=512)
-                print(images.shape)
-                images = images.permute(0, 1, 3, 2)
-                images = torch.nn.functional.interpolate(images, size=512)
-                images = images.permute(0, 1, 3, 2)
-                preds = self.net(images)
+                print(img.shape)
+                img = torch.nn.functional.interpolate(img, size=512)
+                print(img.shape)
+                img = img.permute(0, 1, 3, 2)
+                img = torch.nn.functional.interpolate(img, size=512)
+                img = img.permute(0, 1, 3, 2)
+
+                preds = self.net(img)
                 pred = np.squeeze(torch.sigmoid(preds).cpu().data.numpy())
                 multi_fuse = 255 * pred
-                cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '.png'), multi_fuse)
+                # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '.png'), multi_fuse)
                 masks = torch.nn.functional.interpolate(preds.squeeze(0).sigmoid().permute(1, 2, 0), 3)
-                results = np.concatenate(((masks * 255).cpu().numpy(), images.squeeze(0).permute(1, 2, 0).cpu().numpy()), axis=0)
-                cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '_img.png'),
-                            results)
+                results = np.concatenate(((masks * 255).cpu().numpy(), img.squeeze(0).permute(1, 2, 0).cpu().numpy()), axis=0)
+                # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '_img.png'),
+                #             results)
+                cv2.imshow("img", img.squeeze(0).permute(1, 2, 0).cpu().numpy())
+                cv2.waitKey(0)
+
         time_e = time.time()
         print('Speed: %f FPS' % (img_num/(time_e-time_s)))
         print('Test Done!')

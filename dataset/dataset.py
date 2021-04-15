@@ -54,6 +54,12 @@ class ImageDataTest(data.Dataset):
     def __len__(self):
         return self.image_num
 
+    def from_img_to_tensor(self, img_path):
+        image, im_size = load_image_test(img_path)
+        image = torch.Tensor(image)
+
+        return image
+
 
 def get_loader(config, mode='train', pin=False):
     shuffle = False
