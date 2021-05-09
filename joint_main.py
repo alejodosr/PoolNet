@@ -28,6 +28,9 @@ def get_test_info(sal_mode='e'):
     elif sal_mode == 'b': # BSDS dataset for edge evaluation
         image_root = './data/HED-BSDS_PASCAL/HED-BSDS/test/'
         image_source = './data/HED-BSDS_PASCAL/HED-BSDS/test.lst'
+    elif sal_mode == 'k':
+        image_root = '/media/alejandro/DATA_SSD/temporary/SKU110K_fixed_100/images/'
+        image_source = '/media/alejandro/DATA_SSD/temporary/SKU110K_fixed_100/annotations/images.lst'
     return image_root, image_source
 
 def main(config):

@@ -12,7 +12,7 @@ import torchvision.utils as vutils
 import cv2
 import math
 import time
-
+import csv
 
 class Solver(object):
     def __init__(self, train_loader, test_loader, config):
@@ -59,6 +59,61 @@ class Solver(object):
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.net.parameters()), lr=self.lr, weight_decay=self.wd)
         self.print_network(self.net, 'PoolNet Structure')
 
+    def get_sub_imgs_from_bboxes(self, img, img_name, annotation_path):
+        csv_file = open(annotation_path)
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        imgs = []
+        positions = []
+        # TODO: Print bboxes to check if are well read
+        img_np = (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()
+        h, w, c = img_np.shape
+
+        for row in csv_reader:
+            if row[0] == img_name:
+                tol_x = 0.02
+                tol_y = 0.04
+
+                x1 = max(int(float(row[1]) * (1.0 - tol_x)), 0)
+                y1 = max(int(float(row[2]) * (1.0 - tol_y)), 0)
+                x2 = min(int(float(row[3]) * (1.0 + tol_x)), w)
+                y2 = min(int(float(row[4]) * (1.0 + tol_y)), h)
+                imgs.append(img[:, :, y1:y2, x1:x2])
+                positions.append([x1, y1, x2, y2])
+
+                # Print boundinb box
+                cv2.rectangle(img_np, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+        return imgs, positions, img_np
+
+    def test_grabcut(self, img, in_mask=None):
+        if in_mask is None:
+            mask = np.zeros(img.shape[:2], np.uint8)
+            use_rect = True
+        else:
+            mask = cv2.cvtColor(in_mask, cv2.COLOR_BGR2GRAY)
+            use_rect = False
+            if np.max(mask) == 0:
+                use_rect = True
+            mask = np.where(mask == 0, 2, 1).astype('uint8')
+
+
+        bgdModel = np.zeros((1, 65), np.float64)
+        fgdModel = np.zeros((1, 65), np.float64)
+
+        h, w, c = img.shape
+        ITERATIONS = 5
+        if use_rect:
+            rect = (1, 1, w - 1, h - 1)
+            cv2.grabCut(img, mask, rect, bgdModel, fgdModel, ITERATIONS, cv2.GC_INIT_WITH_RECT)
+        else:
+            cv2.grabCut(img, mask, None, bgdModel, fgdModel, ITERATIONS, cv2.GC_INIT_WITH_MASK)
+            print("using mask")
+
+
+        mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
+
+        return mask2 * 255
+
     def test(self, test_mode=1):
         mode_name = ['edge_fuse', 'sal_fuse']
         EPSILON = 1e-8
@@ -66,6 +121,26 @@ class Solver(object):
         img_num = len(self.test_loader)
         for i, data_batch in enumerate(self.test_loader):
             images, name, im_size = data_batch['image'], data_batch['name'][0], np.asarray(data_batch['size'])
+
+            # if name != 'test_2402.jpg':
+            #     continue
+
+            # Get annotation file
+            annotation_file = self.config.test_root.replace('images/', 'annotations/annotations_test.csv')
+
+            subimages, positions, full_img = self.get_sub_imgs_from_bboxes(images, name, annotation_file)
+
+            images_np = (images.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
+                (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()
+
+            resize_size = 256
+            number_per_row = 10
+            max_x_mosaic = number_per_row * resize_size * 2
+            max_y_mosaic = (len(subimages) * resize_size // number_per_row) + resize_size
+            mosaic = np.zeros((max_y_mosaic, max_x_mosaic, 3))
+            x_mosaic = 0
+            y_mosaic = 0
+
             if test_mode == 0:
                 images = images.numpy()[0].transpose((1,2,0))
                 scale = [0.5, 1, 1.5, 2] # uncomment for multi-scale testing
@@ -96,14 +171,90 @@ class Solver(object):
                 multi_fuse = 255 * (1 - multi_fuse)
                 cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name[test_mode] + '.png'), multi_fuse)
             elif test_mode == 1:
-                with torch.no_grad():
-                    images = Variable(images)
-                    if self.config.cuda:
-                        images = images.cuda()
-                    preds = self.net(images, mode=test_mode)
-                    pred = np.squeeze(torch.sigmoid(preds).cpu().data.numpy())
-                    multi_fuse = 255 * pred
-                    cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name[test_mode] + '.png'), multi_fuse)
+                for idx, img in enumerate(subimages):
+                    with torch.no_grad():
+                        img = Variable(img)
+                        if self.config.cuda:
+                            img = img.cuda()
+
+                        print(img.shape)
+                        img = torch.nn.functional.interpolate(img, size=resize_size)
+                        print(img.shape)
+                        img = img.permute(0, 1, 3, 2)
+                        img = torch.nn.functional.interpolate(img, size=resize_size)
+                        img = img.permute(0, 1, 3, 2)
+
+                        preds = self.net(img, mode=test_mode)
+                        pred = np.squeeze(torch.sigmoid(preds).cpu().data.numpy())
+                        multi_fuse = 255 * pred
+                        # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name[test_mode] + '.png'), multi_fuse)
+                        masks = torch.nn.functional.interpolate(preds.squeeze(0).sigmoid().permute(1, 2, 0), 3)
+
+                        masks_np = ((masks * 255).cpu().numpy().astype(np.uint8)).copy()
+                        masks_grab = masks_np.copy()
+                        cv2.normalize(masks_np, masks_np, 0, 255, cv2.NORM_MINMAX)
+
+                        # OpenCV processing
+                        ret, masks_np = cv2.threshold(masks_np, 2, 255, cv2.THRESH_BINARY)
+
+                        print("Number of subimages: " + str(idx))
+
+                        # Test grabcut
+                        print(np.max(masks_np / 255))
+                        print(masks_np.shape)
+                        print(np.sum(masks_np / 255) * 100 / (resize_size * resize_size * 3))
+                        covering_ptge = np.sum(masks_np / 255) * 100 / (resize_size * resize_size * 3)
+                        THRESHOLD = 43
+                        if covering_ptge < THRESHOLD:
+                            mask_grab = self.test_grabcut((img.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                                                          + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy(),
+                                                          in_mask=None)
+                            mask_grab = (cv2.cvtColor(mask_grab, cv2.COLOR_GRAY2BGR)).astype(np.uint8)
+                            cv2.putText(mask_grab, 'grab',
+                                        (5, 25),
+                                        cv2.FONT_HERSHEY_SIMPLEX,
+                                        1,
+                                        (0, 0, 255),
+                                        2)
+                            results = np.concatenate((mask_grab,
+                                                      (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
+                                                          (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
+                                                     axis=1)
+                        else:
+                            cv2.putText(masks_np, 'pool',
+                                        (5, 25),
+                                        cv2.FONT_HERSHEY_SIMPLEX,
+                                        1,
+                                        (0, 0, 255),
+                                        2)
+                            results = np.concatenate((masks_np,
+                                                      (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
+                                                          (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
+                                                     axis=1).copy()
+
+                        # cv2.imshow("img",
+                        #            (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy())
+                        # cv2.imshow("mask",
+                        #            results)
+                        # cv2.imshow("mask_grab",
+                        #            mask_grab)
+                        # cv2.imshow("masks_np",
+                        #            masks_np)
+                        # cv2.imshow("imgmask", images_np[positions[idx][1]:positions[idx][3], positions[idx][0]:positions[idx][2], :])
+                        # cv2.waitKey(0)
+
+                        mosaic[y_mosaic:y_mosaic + resize_size, x_mosaic:x_mosaic + 2 * resize_size] = results
+                        x_mosaic += (2 * resize_size)
+                        if x_mosaic > max_x_mosaic - 2 * resize_size:
+                            x_mosaic = 0
+                            y_mosaic += resize_size
+
+                cv2.imwrite(os.path.join(self.config.test_fold, name.split('.')[0] + '_mosaic.png'),
+                            mosaic)
+                cv2.imwrite(os.path.join(self.config.test_fold, name.split('.')[0] + '_full_img.png'),
+                            full_img)
+                # input()
+
         time_e = time.time()
         print('Speed: %f FPS' % (img_num/(time_e-time_s)))
         print('Test Done!')

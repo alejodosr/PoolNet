@@ -70,18 +70,22 @@ class Solver(object):
 
         for row in csv_reader:
             if row[0] == img_name:
-                tol = 0.02
-                x1 = max(int(float(row[1]) * (1.0 - tol)), 0)
-                y1 = max(int(float(row[2]) * (1.0 - tol)), 0)
-                x2 = min(int(float(row[3]) * (1.0 + tol)), w)
-                y2 = min(int(float(row[4]) * (1.0 + tol)), h)
+                tol_x = 0.02
+                tol_y = 0.04
+
+                x1 = max(int(float(row[1]) * (1.0 - tol_x)), 0)
+                y1 = max(int(float(row[2]) * (1.0 - tol_y)), 0)
+                x2 = min(int(float(row[3]) * (1.0 + tol_x)), w)
+                y2 = min(int(float(row[4]) * (1.0 + tol_y)), h)
                 imgs.append(img[:, :, y1:y2, x1:x2])
                 positions.append([x1, y1, x2, y2])
 
                 # Print boundinb box
                 cv2.rectangle(img_np, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
-        return imgs, positions
+        return imgs, positions, img_np
+
+
 
     def test(self):
         mode_name = 'sal_fuse'
@@ -92,10 +96,18 @@ class Solver(object):
             # Get annotation file
             annotation_file = self.config.test_root.replace('images/', 'annotations/annotations_test.csv')
 
-            subimages, positions = self.get_sub_imgs_from_bboxes(images, name, annotation_file)
+            subimages, positions, full_img = self.get_sub_imgs_from_bboxes(images, name, annotation_file)
 
             images_np = (images.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
                 (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()
+
+            resize_size = 256
+            number_per_row = 10
+            max_x_mosaic = number_per_row * resize_size * 2
+            max_y_mosaic = (len(subimages) * resize_size // number_per_row) + resize_size
+            mosaic = np.zeros((max_y_mosaic, max_x_mosaic, 3))
+            x_mosaic = 0
+            y_mosaic = 0
 
             for idx, img in enumerate(subimages):
 
@@ -105,10 +117,10 @@ class Solver(object):
                         img = img.cuda()
                     # Workaround
                     print(img.shape)
-                    img = torch.nn.functional.interpolate(img, size=512)
+                    img = torch.nn.functional.interpolate(img, size=resize_size)
                     print(img.shape)
                     img = img.permute(0, 1, 3, 2)
-                    img = torch.nn.functional.interpolate(img, size=512)
+                    img = torch.nn.functional.interpolate(img, size=resize_size)
                     img = img.permute(0, 1, 3, 2)
 
                     preds = self.net(img)
@@ -116,29 +128,50 @@ class Solver(object):
                     multi_fuse = 255 * pred
                     # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '.png'), multi_fuse)
                     masks = torch.nn.functional.interpolate(preds.squeeze(0).sigmoid().permute(1, 2, 0), 3)
-                    # results = np.concatenate(((masks * 255).cpu().numpy(), img.squeeze(0).permute(1, 2, 0).cpu().numpy()), axis=0)
                     # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name + '_' + str(idx) + '_img.png'),
                     #             results)
 
                     masks_np = ((masks * 255).cpu().numpy().astype(np.uint8)).copy()
                     cv2.normalize(masks_np, masks_np, 0, 255, cv2.NORM_MINMAX)
+
+                    # OpenCV processing
                     ret, masks_np = cv2.threshold(masks_np, 2, 255, cv2.THRESH_BINARY)
+                    # masks_np = cv2.cvtColor(masks_np, cv2.COLOR_BGR2GRAY)
+                    #
+                    # contours, hierarchy = cv2.findContours(masks_np, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    #
+                    # for i in range(len(contours)):
+                    #     hull = cv2.convexHull(contours[i])
+                    #     cv2.drawContours(masks_np, [hull], -1, (255, 0, 0), 2)
+
+                    print("Number of subimages: " + str(idx))
+
+                    results = np.concatenate((masks_np,
+                                              (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()), axis=1)
+
+                    mosaic[y_mosaic:y_mosaic + resize_size, x_mosaic:x_mosaic + 2 * resize_size] = results
+                    x_mosaic += (2 * resize_size)
+                    if x_mosaic > max_x_mosaic - 2 *resize_size:
+                        x_mosaic = 0
+                        y_mosaic += resize_size
 
                     # images_np[positions[idx][1]:positions[idx][3], positions[idx][0]:positions[idx][2], 2]\
                     #     = cv2.addWeighted(images_np[positions[idx][1]:positions[idx][3], positions[idx][0]:positions[idx][2], 2], 0.4,
                     #                 masks_np[:, : , 1], 0.7, 0.0)
 
                     #
-                    cv2.imshow("img",
-                               (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy())
-                    cv2.imshow("mask",
-                               masks_np)
-                    cv2.imshow("imgmask", images_np[positions[idx][1]:positions[idx][3], positions[idx][0]:positions[idx][2], :])
-                    cv2.waitKey(0)
+                    # cv2.imshow("img",
+                    #            (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy())
+                    # cv2.imshow("mask",
+                    #            results)
+                    # cv2.imshow("imgmask", images_np[positions[idx][1]:positions[idx][3], positions[idx][0]:positions[idx][2], :])
+                    # cv2.waitKey(0)
 
-            cv2.imwrite(os.path.join(self.config.test_fold, name + 'full_img.png'),
-                        images_np)
-            input()
+            cv2.imwrite(os.path.join(self.config.test_fold, name.split('.')[0] + '_mosaic.png'),
+                        mosaic)
+            cv2.imwrite(os.path.join(self.config.test_fold, name.split('.')[0] + '_full_img.png'),
+                        full_img)
+            # input()
 
         time_e = time.time()
         print('Speed: %f FPS' % (img_num/(time_e-time_s)))
