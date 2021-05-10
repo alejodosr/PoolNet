@@ -114,6 +114,76 @@ class Solver(object):
 
         return mask2 * 255
 
+    def infer(self, img_np, resize_size=256, test_mode=1):
+        with torch.no_grad():
+            # Convert to tensor and apply normalizations
+            img = np.array(img_np, dtype=np.float32)
+            # im_size = tuple(img.shape[:2])
+            img -= np.array((104.00699, 116.66877, 122.67892))
+            img = img.transpose((2, 0, 1))
+            img = torch.Tensor(img)
+
+            img = Variable(img)
+            if self.config.cuda:
+                img = img.cuda()
+
+            print(img.shape)
+            img = torch.nn.functional.interpolate(img, size=resize_size)
+            print(img.shape)
+            img = img.permute(0, 1, 3, 2)
+            img = torch.nn.functional.interpolate(img, size=resize_size)
+            img = img.permute(0, 1, 3, 2)
+
+            preds = self.net(img, mode=test_mode)
+            pred = np.squeeze(torch.sigmoid(preds).cpu().data.numpy())
+            multi_fuse = 255 * pred
+            # cv2.imwrite(os.path.join(self.config.test_fold, name[:-4] + '_' + mode_name[test_mode] + '.png'), multi_fuse)
+            masks = torch.nn.functional.interpolate(preds.squeeze(0).sigmoid().permute(1, 2, 0), 3)
+
+            masks_np = ((masks * 255).cpu().numpy().astype(np.uint8)).copy()
+            masks_grab = masks_np.copy()
+            cv2.normalize(masks_np, masks_np, 0, 255, cv2.NORM_MINMAX)
+
+            # OpenCV processing
+            ret, masks_np = cv2.threshold(masks_np, 2, 255, cv2.THRESH_BINARY)
+
+            # Test grabcut
+            print(np.max(masks_np / 255))
+            print(masks_np.shape)
+            print(np.sum(masks_np / 255) * 100 / (resize_size * resize_size * 3))
+            covering_ptge = np.sum(masks_np / 255) * 100 / (resize_size * resize_size * 3)
+            THRESHOLD = 43
+            if covering_ptge < THRESHOLD:
+                mask_grab = self.test_grabcut((img.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                                               + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy(),
+                                              in_mask=None)
+                mask_grab = (cv2.cvtColor(mask_grab, cv2.COLOR_GRAY2BGR)).astype(np.uint8)
+                cv2.putText(mask_grab, 'grab',
+                            (5, 25),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1,
+                            (0, 0, 255),
+                            2)
+                results = np.concatenate((mask_grab,
+                                          (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
+                                              (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
+                                         axis=1)
+                return mask_grab
+
+            else:
+                cv2.putText(masks_np, 'pool',
+                            (5, 25),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1,
+                            (0, 0, 255),
+                            2)
+                results = np.concatenate((masks_np,
+                                          (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
+                                              (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
+                                         axis=1).copy()
+
+                return masks_np
+
     def test(self, test_mode=1):
         mode_name = ['edge_fuse', 'sal_fuse']
         EPSILON = 1e-8
