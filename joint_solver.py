@@ -168,7 +168,8 @@ class Solver(object):
                                           (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
                                               (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
                                          axis=1)
-                return mask_grab
+                # return mask_grab
+                return results
 
             else:
                 cv2.putText(masks_np, 'pool',
@@ -182,7 +183,8 @@ class Solver(object):
                                               (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
                                          axis=1).copy()
 
-                return masks_np
+                # return masks_np
+                return results
 
     def test(self, test_mode=1):
         mode_name = ['edge_fuse', 'sal_fuse']
