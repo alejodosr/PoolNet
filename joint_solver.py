@@ -118,16 +118,16 @@ class Solver(object):
         with torch.no_grad():
             # Convert to tensor and apply normalizations
             img = np.array(img_np, dtype=np.float32)
-            # im_size = tuple(img.shape[:2])
             img -= np.array((104.00699, 116.66877, 122.67892))
             img = img.transpose((2, 0, 1))
-            img = torch.Tensor(img)
+            img = torch.Tensor(img).unsqueeze(0)
 
             img = Variable(img)
             if self.config.cuda:
                 img = img.cuda()
 
             print(img.shape)
+            im_size = (img.shape[-1], img.shape[-2])
             img = torch.nn.functional.interpolate(img, size=resize_size)
             print(img.shape)
             img = img.permute(0, 1, 3, 2)
@@ -158,33 +158,36 @@ class Solver(object):
                                                + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy(),
                                               in_mask=None)
                 mask_grab = (cv2.cvtColor(mask_grab, cv2.COLOR_GRAY2BGR)).astype(np.uint8)
-                cv2.putText(mask_grab, 'grab',
-                            (5, 25),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            1,
-                            (0, 0, 255),
-                            2)
-                results = np.concatenate((mask_grab,
-                                          (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
-                                              (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
-                                         axis=1)
-                # return mask_grab
-                return results
+                # cv2.putText(mask_grab, 'grab',
+                #             (5, 25),
+                #             cv2.FONT_HERSHEY_SIMPLEX,
+                #             1,
+                #             (0, 0, 255),
+                #             2)
+                # results = np.concatenate((mask_grab,
+                #                           (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
+                #                               (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
+                #                          axis=1)
+                mask_grab = cv2.resize(mask_grab, im_size)
+                img_out = cv2.resize((img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy(), im_size)
+                return mask_grab, img_out
 
             else:
-                cv2.putText(masks_np, 'pool',
-                            (5, 25),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            1,
-                            (0, 0, 255),
-                            2)
-                results = np.concatenate((masks_np,
-                                          (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
-                                              (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
-                                         axis=1).copy()
+                # cv2.putText(masks_np, 'pool',
+                #             (5, 25),
+                #             cv2.FONT_HERSHEY_SIMPLEX,
+                #             1,
+                #             (0, 0, 255),
+                #             2)
+                # results = np.concatenate((masks_np,
+                #                           (img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array(
+                #                               (104.00699, 116.66877, 122.67892))).astype(np.uint8).copy()),
+                #                          axis=1).copy()
 
-                # return masks_np
-                return results
+                masks_np = cv2.resize(masks_np, im_size)
+                img_out = cv2.resize((img.squeeze(0).permute(1, 2, 0).cpu().numpy() + np.array((104.00699, 116.66877, 122.67892))).astype(np.uint8).copy(), im_size)
+
+                return masks_np, img_out
 
     def test(self, test_mode=1):
         mode_name = ['edge_fuse', 'sal_fuse']
